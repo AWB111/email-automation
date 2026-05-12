@@ -1,0 +1,3 @@
+src/index.ts
+src/auth/routes.ts
+src/processor/routes.ts
