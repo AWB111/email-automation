@@ -1,12 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env.js";
-import { getToneProfile } from "../db/tone.js";
 import { getThreadMessages, createReplyDraft } from "../graph/mail.js";
 import type { GraphMessage } from "../graph/mail.js";
 import { textToHtml, wrapWithReviewNote } from "../utils/html.js";
 import { log } from "../utils/logger.js";
 
 const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
+
+const TONE_GUIDE = `Warm, professional Australian-English voice. Friendly but not casual.
+- Greeting: "Hi [first name]," when the sender's first name is clear; otherwise "Hi there,".
+- Body: concise — typically 2-4 short sentences. Direct and clear, no waffle.
+- Voice: first person ("I"). Acknowledge briefly, then answer or propose next step.
+- Avoid filler: no "I hope this email finds you well", no "Thank you for reaching out", no AI-sounding phrasing.
+- Sign-off: "Thanks," on a new line followed by the user's first name. Use "Best," for more formal threads.`;
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
@@ -31,15 +37,6 @@ function formatThreadForPrompt(messages: GraphMessage[]): string {
 export async function draftReply(
   message: GraphMessage
 ): Promise<{ draftId: string; draftText: string }> {
-  // Get tone profile
-  const toneData = await getToneProfile(env.userEmail);
-  if (!toneData) {
-    throw new Error(
-      "No tone profile found. Run POST /api/tone/build first."
-    );
-  }
-
-  // Get thread context
   let threadContext = "";
   if (message.conversationId) {
     const threadMessages = await getThreadMessages(
@@ -51,20 +48,19 @@ export async function draftReply(
     }
   }
 
-  const systemPrompt = `You are ghostwriting an email reply on behalf of the user. Write as if you ARE the user — first person, their voice, their style.
+  const systemPrompt = `You are ghostwriting an email reply on behalf of ${env.userEmail}. Write in first person as the user.
 
-## The user's writing style:
-${toneData.profile_text}
+## Tone:
+${TONE_GUIDE}
 
 ## Rules:
-- Write ONLY the reply body. No subject line, no headers.
-- Match the user's greeting style, sign-off, formality, and sentence structure exactly.
+- Write ONLY the reply body. No subject line, no email headers.
 - Address the actual content of the email. Be specific, not generic.
-- Keep it concise — match the typical length of the user's emails.
-- If the email asks a question, answer it directly (or propose a time, suggest next steps, etc.).
-- Do not include phrases like "I hope this email finds you well" or other AI-sounding filler.
+- Never commit to a time, date, availability, price, or commitment on the user's behalf. Use a bracketed placeholder like [time], [date], [amount].
+- Never make a policy or judgment call on the user's behalf (e.g., refusing a request, agreeing to terms). Instead leave a bracketed prompt for the user, e.g. "[Confirm with user: can we action this internally?]".
+- For any factual detail you don't have (a name, a number, a status), use a bracketed placeholder. Do not guess.
 - Do not mention that you are an AI or that this is auto-generated.
-- If you're unsure about specific details (dates, times, numbers), use reasonable placeholders like [date] or [time] that the user can fill in.`;
+- Keep it concise. Default to 2-4 sentences unless the situation clearly needs more.`;
 
   let userPrompt = `Write a reply to this email:\n\nFrom: ${message.from?.emailAddress?.address || "unknown"}\nSubject: ${message.subject || "(no subject)"}\nDate: ${message.receivedDateTime}\n\n${truncate(message.body?.content || "", 2000)}`;
 

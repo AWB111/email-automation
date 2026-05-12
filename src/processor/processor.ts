@@ -10,6 +10,21 @@ import { log } from "../utils/logger.js";
 
 const LAST_CHECKED_KEY = "last_checked_at";
 
+const SYDNEY_TZ = "Australia/Sydney";
+const SYDNEY_WINDOW_START_HOUR = 8;
+const SYDNEY_WINDOW_END_HOUR = 20;
+
+function isWithinSydneyBusinessHours(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: SYDNEY_TZ,
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "-1";
+  const hour = parseInt(hourStr, 10) % 24;
+  return hour >= SYDNEY_WINDOW_START_HOUR && hour < SYDNEY_WINDOW_END_HOUR;
+}
+
 export interface ProcessResult {
   total: number;
   skippedByRule: number;
@@ -36,6 +51,11 @@ export async function processNewEmails(): Promise<ProcessResult> {
     errors: 0,
     details: [],
   };
+
+  if (!isWithinSydneyBusinessHours()) {
+    log.info("Outside Sydney business hours (8am-8pm), skipping run");
+    return result;
+  }
 
   const lastChecked = await getState(LAST_CHECKED_KEY);
   const since = lastChecked || undefined;

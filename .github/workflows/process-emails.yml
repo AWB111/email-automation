@@ -1,0 +1,31 @@
+name: Process emails
+
+on:
+  schedule:
+    # Every 5 minutes within the UTC envelope covering Sydney 8am-8pm year-round.
+    # AEST (UTC+10, May-Oct): 8am-8pm Sydney = 22:00-09:59 UTC
+    # AEDT (UTC+11, Oct-Apr): 8am-8pm Sydney = 21:00-08:59 UTC
+    # Union: 21:00-09:59 UTC. The handler enforces the exact 8am-8pm Sydney window.
+    - cron: "*/5 21-23,0-9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: process-emails
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger /api/process
+        env:
+          PROCESS_URL: ${{ secrets.PROCESS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST "$PROCESS_URL" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 290 \
+            -w "\nstatus=%{http_code} time=%{time_total}s\n"
