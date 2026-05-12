@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { env } from "../config/env.js";
+import { env } from "../config/env.js"
 import type { Classification } from "../db/emails.js";
 import { log } from "../utils/logger.js";
 
